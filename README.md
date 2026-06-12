@@ -1,36 +1,50 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 社食管理システム
 
-## Getting Started
+社員食堂の在庫・納品・販売数を管理するウェブアプリ。
 
-First, run the development server:
+**技術スタック**: Next.js 14 (App Router) + Supabase (PostgreSQL) + Vercel（無料枠で完結）
+
+## セットアップ手順
+
+### 1. Supabase プロジェクト作成
+
+1. [supabase.com](https://supabase.com) でプロジェクト作成
+2. SQL Editor で `supabase/migrations/001_initial.sql` を実行
+
+### 2. 環境変数設定
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.local.example .env.local
+# .env.local を編集して各値を設定
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+`AUTH_TOKEN_VALUE` はランダム文字列を生成して設定:
+```bash
+openssl rand -hex 32
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 3. ローカル起動
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm install
+npm run dev
+```
 
-## Learn More
+### 4. Vercel デプロイ
 
-To learn more about Next.js, take a look at the following resources:
+1. GitHub にプッシュ
+2. [vercel.com](https://vercel.com) でリポジトリをインポート
+3. Vercel の Environment Variables に `.env.local` の内容を全て設定
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 主な機能
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| ページ | 機能 |
+|--------|------|
+| `/` (日次チェック) | 日付選択・監視カメラ確認日時・商品ごとの納品数/前日在庫/販売数/実在庫入力・差異の赤字表示 |
+| `/products` (商品管理) | 商品追加・編集・有効/無効切替・削除 |
 
-## Deploy on Vercel
+## DBスキーマ
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `products` — 商品マスタ
+- `daily_checks` — 日次チェック（日付・カメラ確認日時・メモ）
+- `inventory_records` — 在庫記録（チェック×商品の納品数・前日在庫・販売数・実在庫）
