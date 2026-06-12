@@ -15,6 +15,7 @@ type InventoryRecord = {
   product_id: string
   delivery_qty: number
   prev_stock: number
+  prev_month_carry: number
   sold_qty: number
   actual_stock: number
   products?: { name: string; sort_order: number }
@@ -24,6 +25,7 @@ type RowData = {
   name: string
   delivery_qty: number
   prev_stock: number
+  prev_month_carry: number
   sold_qty: number
   actual_stock: number
 }
@@ -80,6 +82,7 @@ export default function Home() {
         name: p.name,
         delivery_qty: cur?.delivery_qty ?? 0,
         prev_stock: cur?.prev_stock ?? prev?.actual_stock ?? 0,
+        prev_month_carry: cur?.prev_month_carry ?? 0,
         sold_qty: cur?.sold_qty ?? 0,
         actual_stock: cur?.actual_stock ?? 0,
       }
@@ -129,6 +132,7 @@ export default function Home() {
             product_id: r.product_id,
             delivery_qty: r.delivery_qty,
             prev_stock: r.prev_stock,
+            prev_month_carry: r.prev_month_carry,
             sold_qty: r.sold_qty,
             actual_stock: r.actual_stock,
           }),
@@ -141,6 +145,7 @@ export default function Home() {
   }
 
   const totPrev = rows.reduce((s, r) => s + r.prev_stock, 0)
+  const totPrevMonthCarry = rows.reduce((s, r) => s + r.prev_month_carry, 0)
   const totDelivery = rows.reduce((s, r) => s + r.delivery_qty, 0)
   const totSold = rows.reduce((s, r) => s + r.sold_qty, 0)
   const totActual = rows.reduce((s, r) => s + r.actual_stock, 0)
@@ -191,6 +196,7 @@ export default function Home() {
           <thead className="bg-gray-50 dark:bg-gray-700">
             <tr>
               <th className="text-left px-4 py-3 text-gray-700 dark:text-gray-300 font-semibold">商品名</th>
+              <th className="text-center px-3 py-3 text-gray-700 dark:text-gray-300 font-semibold">前月繰越数</th>
               <th className="text-center px-3 py-3 text-gray-700 dark:text-gray-300 font-semibold">前日在庫</th>
               <th className="text-center px-3 py-3 text-gray-700 dark:text-gray-300 font-semibold">納品数</th>
               <th className="text-center px-3 py-3 text-gray-700 dark:text-gray-300 font-semibold">販売数</th>
@@ -205,6 +211,9 @@ export default function Home() {
               return (
                 <tr key={r.product_id} className="bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750">
                   <td className="px-4 py-2 text-gray-800 dark:text-gray-100 font-medium">{r.name}</td>
+                  <td className="px-3 py-2 text-center">
+                    <NumInput value={r.prev_month_carry} onChange={(v) => updateRow(r.product_id, 'prev_month_carry', v)} />
+                  </td>
                   <td className="px-3 py-2 text-center">
                     <NumInput value={r.prev_stock} onChange={(v) => updateRow(r.product_id, 'prev_stock', v)} />
                   </td>
@@ -239,6 +248,7 @@ export default function Home() {
             <tfoot className="bg-gray-50 dark:bg-gray-700">
               <tr>
                 <td className="px-4 py-3 font-bold text-gray-800 dark:text-gray-100">合計</td>
+                <td className="px-3 py-3 text-center font-bold text-gray-700 dark:text-gray-200">{totPrevMonthCarry}</td>
                 <td className="px-3 py-3 text-center font-bold text-gray-700 dark:text-gray-200">{totPrev}</td>
                 <td className="px-3 py-3 text-center font-bold text-gray-700 dark:text-gray-200">{totDelivery}</td>
                 <td className="px-3 py-3 text-center font-bold text-gray-700 dark:text-gray-200">{totSold}</td>

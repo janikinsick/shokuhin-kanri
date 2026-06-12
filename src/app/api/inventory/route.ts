@@ -38,6 +38,7 @@ export async function POST(request: NextRequest) {
       .update({
         delivery_qty: body.delivery_qty ?? 0,
         prev_stock: body.prev_stock ?? 0,
+        prev_month_carry: body.prev_month_carry ?? 0,
         sold_qty: body.sold_qty ?? 0,
         actual_stock: body.actual_stock ?? 0,
       })
@@ -56,6 +57,7 @@ export async function POST(request: NextRequest) {
       product_id: body.product_id,
       delivery_qty: body.delivery_qty ?? 0,
       prev_stock: body.prev_stock ?? 0,
+      prev_month_carry: body.prev_month_carry ?? 0,
       sold_qty: body.sold_qty ?? 0,
       actual_stock: body.actual_stock ?? 0,
     })
