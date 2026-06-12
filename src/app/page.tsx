@@ -29,6 +29,16 @@ type RowData = {
   sold_qty: number
   actual_stock: number
 }
+type MonthlyCheck = { id: string; check_date: string; camera_checked_at: string | null }
+type MonthlyRecord = {
+  check_id: string
+  product_id: string
+  delivery_qty: number
+  sold_qty: number
+  actual_stock: number
+  prev_month_carry: number
+  products?: { name: string; sort_order: number }
+}
 
 function toDateString(d: Date) {
   return d.toISOString().slice(0, 10)
@@ -45,6 +55,13 @@ export default function Home() {
   const [rows, setRows] = useState<RowData[]>([])
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState<string | null>(null)
+
+  const now = new Date()
+  const [monthlyYear, setMonthlyYear] = useState(now.getFullYear())
+  const [monthlyMonth, setMonthlyMonth] = useState(now.getMonth() + 1)
+  const [monthlyChecks, setMonthlyChecks] = useState<MonthlyCheck[]>([])
+  const [monthlyRecords, setMonthlyRecords] = useState<MonthlyRecord[]>([])
+  const [monthlyProducts, setMonthlyProducts] = useState<Product[]>([])
 
   const loadProducts = useCallback(async () => {
     const res = await fetch('/api/products')
@@ -90,8 +107,21 @@ export default function Home() {
     setRows(newRows)
   }, [])
 
+  const loadMonthlySummary = useCallback(async (year: number, month: number) => {
+    const [summaryRes, prodsRes] = await Promise.all([
+      fetch(`/api/monthly-summary?year=${year}&month=${month}`),
+      fetch('/api/products'),
+    ])
+    const summary = await summaryRes.json()
+    const prods: Product[] = await prodsRes.json()
+    setMonthlyChecks(summary.checks ?? [])
+    setMonthlyRecords(summary.records ?? [])
+    setMonthlyProducts(prods.filter((p) => p.active))
+  }, [])
+
   useEffect(() => {
     loadProducts().then((prods) => loadForDate(date, prods))
+    loadMonthlySummary(monthlyYear, monthlyMonth)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleDateChange(newDate: string) {
@@ -276,6 +306,146 @@ export default function Home() {
         {savedAt && (
           <span className="text-green-600 dark:text-green-400 text-sm">{savedAt} に保存しました</span>
         )}
+      </div>
+
+      {/* 月次集計 */}
+      <MonthlySummary
+        year={monthlyYear}
+        month={monthlyMonth}
+        checks={monthlyChecks}
+        records={monthlyRecords}
+        products={monthlyProducts}
+        onChangeMonth={(y, m) => {
+          setMonthlyYear(y)
+          setMonthlyMonth(m)
+          loadMonthlySummary(y, m)
+        }}
+      />
+    </div>
+  )
+}
+
+function MonthlySummary({
+  year,
+  month,
+  checks,
+  records,
+  products,
+  onChangeMonth,
+}: {
+  year: number
+  month: number
+  checks: MonthlyCheck[]
+  records: MonthlyRecord[]
+  products: Product[]
+  onChangeMonth: (y: number, m: number) => void
+}) {
+  const sorted = [...products].sort((a, b) => a.sort_order - b.sort_order)
+
+  function prevMonth() {
+    if (month === 1) onChangeMonth(year - 1, 12)
+    else onChangeMonth(year, month - 1)
+  }
+  function nextMonth() {
+    if (month === 12) onChangeMonth(year + 1, 1)
+    else onChangeMonth(year, month + 1)
+  }
+
+  return (
+    <div className="mt-8">
+      <div className="flex items-center gap-4 mb-3">
+        <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">月次集計</h2>
+        <button onClick={prevMonth} className="px-2 py-1 rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700">◀</button>
+        <span className="font-semibold text-gray-700 dark:text-gray-200">{year}年{month}月</span>
+        <button onClick={nextMonth} className="px-2 py-1 rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700">▶</button>
+      </div>
+      <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
+        <table className="text-xs border-collapse">
+          <thead className="bg-gray-50 dark:bg-gray-700">
+            <tr>
+              <th className="sticky left-0 z-10 bg-gray-50 dark:bg-gray-700 text-left px-3 py-2 text-gray-700 dark:text-gray-300 font-semibold border-r border-gray-200 dark:border-gray-600 min-w-36">商品名</th>
+              <th className="px-2 py-2 text-center text-gray-700 dark:text-gray-300 font-semibold border-r border-gray-200 dark:border-gray-600 whitespace-nowrap">前回繰越数</th>
+              {checks.map((c) => (
+                <th key={c.id} className="px-2 py-2 text-center text-gray-700 dark:text-gray-300 font-semibold border-r border-gray-200 dark:border-gray-600 whitespace-nowrap">
+                  {c.check_date.slice(5).replace('-', '/')}
+                </th>
+              ))}
+              <th className="px-2 py-2 text-center text-gray-700 dark:text-gray-300 font-semibold border-r border-gray-200 dark:border-gray-600 whitespace-nowrap">合計納品数</th>
+              <th className="px-2 py-2 text-center text-gray-700 dark:text-gray-300 font-semibold border-r border-gray-200 dark:border-gray-600 whitespace-nowrap">合計販売数</th>
+              <th className="px-2 py-2 text-center text-gray-700 dark:text-gray-300 font-semibold whitespace-nowrap">在庫数</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+            {sorted.map((p) => {
+              const checkIdMap: Record<string, MonthlyRecord> = {}
+              for (const r of records) {
+                if (r.product_id === p.id) checkIdMap[r.check_id] = r
+              }
+              const totalDelivery = checks.reduce((s, c) => s + (checkIdMap[c.id]?.delivery_qty ?? 0), 0)
+              const totalSold = checks.reduce((s, c) => s + (checkIdMap[c.id]?.sold_qty ?? 0), 0)
+              const lastCheck = checks[checks.length - 1]
+              const stock = lastCheck ? (checkIdMap[lastCheck.id]?.actual_stock ?? 0) : 0
+              const prevMonthCarry = checks[0] ? (checkIdMap[checks[0].id]?.prev_month_carry ?? 0) : 0
+
+              return (
+                <tr key={p.id} className="bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750">
+                  <td className="sticky left-0 z-10 bg-white dark:bg-gray-800 px-3 py-1.5 text-gray-800 dark:text-gray-100 font-medium border-r border-gray-200 dark:border-gray-600 whitespace-nowrap">{p.name}</td>
+                  <td className="px-2 py-1.5 text-center text-gray-700 dark:text-gray-300 border-r border-gray-200 dark:border-gray-600">{prevMonthCarry || ''}</td>
+                  {checks.map((c) => {
+                    const qty = checkIdMap[c.id]?.delivery_qty ?? 0
+                    return (
+                      <td key={c.id} className="px-2 py-1.5 text-center text-gray-700 dark:text-gray-300 border-r border-gray-200 dark:border-gray-600">
+                        {qty || ''}
+                      </td>
+                    )
+                  })}
+                  <td className="px-2 py-1.5 text-center font-semibold text-gray-800 dark:text-gray-100 border-r border-gray-200 dark:border-gray-600">{totalDelivery || ''}</td>
+                  <td className="px-2 py-1.5 text-center font-semibold text-gray-800 dark:text-gray-100 border-r border-gray-200 dark:border-gray-600">{totalSold || ''}</td>
+                  <td className="px-2 py-1.5 text-center font-semibold text-gray-800 dark:text-gray-100">{stock || ''}</td>
+                </tr>
+              )
+            })}
+            {sorted.length === 0 && (
+              <tr>
+                <td colSpan={4 + checks.length} className="text-center py-6 text-gray-400 dark:text-gray-500">
+                  データがありません
+                </td>
+              </tr>
+            )}
+          </tbody>
+          {sorted.length > 0 && (
+            <tfoot className="bg-gray-50 dark:bg-gray-700">
+              <tr>
+                <td className="sticky left-0 z-10 bg-gray-50 dark:bg-gray-700 px-3 py-2 font-bold text-gray-800 dark:text-gray-100 border-r border-gray-200 dark:border-gray-600">合計</td>
+                <td className="px-2 py-2 text-center font-bold text-gray-700 dark:text-gray-200 border-r border-gray-200 dark:border-gray-600">
+                  {records.filter((r) => checks[0] && r.check_id === checks[0].id).reduce((s, r) => s + (r.prev_month_carry ?? 0), 0) || ''}
+                </td>
+                {checks.map((c) => {
+                  const dayTotal = records.filter((r) => r.check_id === c.id).reduce((s, r) => s + r.delivery_qty, 0)
+                  return (
+                    <td key={c.id} className="px-2 py-2 text-center font-bold text-gray-700 dark:text-gray-200 border-r border-gray-200 dark:border-gray-600">
+                      {dayTotal || ''}
+                    </td>
+                  )
+                })}
+                <td className="px-2 py-2 text-center font-bold text-gray-700 dark:text-gray-200 border-r border-gray-200 dark:border-gray-600">
+                  {records.reduce((s, r) => s + r.delivery_qty, 0) || ''}
+                </td>
+                <td className="px-2 py-2 text-center font-bold text-gray-700 dark:text-gray-200 border-r border-gray-200 dark:border-gray-600">
+                  {records.reduce((s, r) => s + r.sold_qty, 0) || ''}
+                </td>
+                <td className="px-2 py-2 text-center font-bold text-gray-700 dark:text-gray-200">
+                  {(() => {
+                    const lastCheck = checks[checks.length - 1]
+                    if (!lastCheck) return ''
+                    const tot = records.filter((r) => r.check_id === lastCheck.id).reduce((s, r) => s + r.actual_stock, 0)
+                    return tot || ''
+                  })()}
+                </td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
       </div>
     </div>
   )
