@@ -443,6 +443,18 @@ function MonthlySummary({
                   })()}
                 </td>
               </tr>
+              <tr>
+                <td className="sticky left-0 z-10 bg-gray-50 dark:bg-gray-700 px-3 py-1.5 text-xs text-gray-500 dark:text-gray-400 border-r border-gray-200 dark:border-gray-600">カメラ確認</td>
+                <td className="border-r border-gray-200 dark:border-gray-600" />
+                {checks.map((c) => (
+                  <td key={c.id} className="px-1 py-1.5 text-center text-gray-500 dark:text-gray-400 border-r border-gray-200 dark:border-gray-600 whitespace-nowrap">
+                    {c.camera_checked_at
+                      ? new Date(c.camera_checked_at).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                      : ''}
+                  </td>
+                ))}
+                <td colSpan={3} />
+              </tr>
             </tfoot>
           )}
         </table>
