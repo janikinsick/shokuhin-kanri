@@ -44,8 +44,12 @@ function toDateString(d: Date) {
   return d.toISOString().slice(0, 10)
 }
 
+function totalDelivered(row: RowData) {
+  return row.prev_month_carry + row.delivery_qty
+}
+
 function expectedStock(row: RowData) {
-  return row.prev_stock + row.delivery_qty - row.sold_qty
+  return totalDelivered(row) - row.sold_qty
 }
 
 export default function Home() {
@@ -179,8 +183,9 @@ export default function Home() {
   const totDelivery = rows.reduce((s, r) => s + r.delivery_qty, 0)
   const totSold = rows.reduce((s, r) => s + r.sold_qty, 0)
   const totActual = rows.reduce((s, r) => s + r.actual_stock, 0)
-  const totExpected = rows.reduce((s, r) => s + expectedStock(r), 0)
-  const totalMismatch = rows.length > 0 && totActual !== totExpected
+  const totTotalDelivered = rows.reduce((s, r) => s + totalDelivered(r), 0)
+  const totActualPlusSold = rows.reduce((s, r) => s + r.actual_stock + r.sold_qty, 0)
+  const totalMismatch = rows.length > 0 && totActualPlusSold !== totTotalDelivered
 
   return (
     <div className="max-w-5xl mx-auto p-4">
@@ -236,8 +241,10 @@ export default function Home() {
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
             {rows.map((r) => {
-              const exp = expectedStock(r)
-              const mismatch = r.actual_stock !== exp
+              const tot = totalDelivered(r)
+              const actual = r.actual_stock + r.sold_qty
+              const mismatch = actual !== tot
+              const diff = actual - tot
               return (
                 <tr key={r.product_id} className="bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750">
                   <td className="px-4 py-2 text-gray-800 dark:text-gray-100 font-medium">{r.name}</td>
@@ -261,7 +268,7 @@ export default function Home() {
                     />
                   </td>
                   <td className={`px-3 py-2 text-center font-semibold ${mismatch ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
-                    {mismatch ? `${r.actual_stock - exp > 0 ? '+' : ''}${r.actual_stock - exp}` : '一致'}
+                    {mismatch ? `${diff > 0 ? '+' : ''}${diff}` : '一致'}
                   </td>
                 </tr>
               )
@@ -286,7 +293,7 @@ export default function Home() {
                   {totActual}
                 </td>
                 <td className={`px-3 py-3 text-center font-bold ${totalMismatch ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
-                  {totalMismatch ? `${totActual - totExpected > 0 ? '+' : ''}${totActual - totExpected}` : '一致'}
+                  {totalMismatch ? `${totActualPlusSold - totTotalDelivered > 0 ? '+' : ''}${totActualPlusSold - totTotalDelivered}` : '一致'}
                 </td>
               </tr>
             </tfoot>
@@ -469,11 +476,11 @@ function MonthlySummary({
               for (const r of records) {
                 if (r.product_id === p.id) checkIdMap[r.check_id] = r
               }
-              const totalDelivery = checks.reduce((s, c) => s + (checkIdMap[c.id]?.delivery_qty ?? 0), 0)
-              const totalSold = checks.reduce((s, c) => s + (checkIdMap[c.id]?.sold_qty ?? 0), 0)
-              const lastCheck = checks[checks.length - 1]
-              const stock = lastCheck ? (checkIdMap[lastCheck.id]?.actual_stock ?? 0) : 0
               const prevMonthCarry = checks[0] ? (checkIdMap[checks[0].id]?.prev_month_carry ?? 0) : 0
+              const sumDelivery = checks.reduce((s, c) => s + (checkIdMap[c.id]?.delivery_qty ?? 0), 0)
+              const totalDelivery = prevMonthCarry + sumDelivery
+              const totalSold = checks.reduce((s, c) => s + (checkIdMap[c.id]?.sold_qty ?? 0), 0)
+              const stock = totalDelivery - totalSold
 
               return (
                 <tr key={p.id} className="bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750">
@@ -516,20 +523,26 @@ function MonthlySummary({
                     </td>
                   )
                 })}
-                <td className="px-2 py-2 text-center font-bold text-gray-700 dark:text-gray-200 border-r border-gray-200 dark:border-gray-600">
-                  {records.reduce((s, r) => s + r.delivery_qty, 0) || ''}
-                </td>
-                <td className="px-2 py-2 text-center font-bold text-gray-700 dark:text-gray-200 border-r border-gray-200 dark:border-gray-600">
-                  {records.reduce((s, r) => s + r.sold_qty, 0) || ''}
-                </td>
-                <td className="px-2 py-2 text-center font-bold text-gray-700 dark:text-gray-200">
-                  {(() => {
-                    const lastCheck = checks[checks.length - 1]
-                    if (!lastCheck) return ''
-                    const tot = records.filter((r) => r.check_id === lastCheck.id).reduce((s, r) => s + r.actual_stock, 0)
-                    return tot || ''
-                  })()}
-                </td>
+                {(() => {
+                  const totalPrevCarry = records.filter((r) => checks[0] && r.check_id === checks[0].id).reduce((s, r) => s + (r.prev_month_carry ?? 0), 0)
+                  const totalSumDelivery = records.reduce((s, r) => s + r.delivery_qty, 0)
+                  const grandTotalDelivery = totalPrevCarry + totalSumDelivery
+                  const grandTotalSold = records.reduce((s, r) => s + r.sold_qty, 0)
+                  const grandStock = grandTotalDelivery - grandTotalSold
+                  return (
+                    <>
+                      <td className="px-2 py-2 text-center font-bold text-gray-700 dark:text-gray-200 border-r border-gray-200 dark:border-gray-600">
+                        {grandTotalDelivery || ''}
+                      </td>
+                      <td className="px-2 py-2 text-center font-bold text-gray-700 dark:text-gray-200 border-r border-gray-200 dark:border-gray-600">
+                        {grandTotalSold || ''}
+                      </td>
+                      <td className="px-2 py-2 text-center font-bold text-gray-700 dark:text-gray-200">
+                        {grandStock || ''}
+                      </td>
+                    </>
+                  )
+                })()}
               </tr>
               <tr>
                 <td className="sticky left-0 z-10 bg-gray-50 dark:bg-gray-700 px-3 py-1.5 text-xs text-gray-500 dark:text-gray-400 border-r border-gray-200 dark:border-gray-600">カメラ確認</td>
