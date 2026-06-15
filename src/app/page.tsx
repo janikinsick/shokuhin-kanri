@@ -44,12 +44,8 @@ function toDateString(d: Date) {
   return d.toISOString().slice(0, 10)
 }
 
-function totalDelivered(row: RowData) {
-  return row.prev_month_carry + row.delivery_qty
-}
-
 function expectedStock(row: RowData) {
-  return totalDelivered(row) - row.sold_qty
+  return row.prev_stock + row.delivery_qty - row.sold_qty
 }
 
 export default function Home() {
@@ -179,13 +175,11 @@ export default function Home() {
   }
 
   const totPrev = rows.reduce((s, r) => s + r.prev_stock, 0)
-  const totPrevMonthCarry = rows.reduce((s, r) => s + r.prev_month_carry, 0)
   const totDelivery = rows.reduce((s, r) => s + r.delivery_qty, 0)
   const totSold = rows.reduce((s, r) => s + r.sold_qty, 0)
   const totActual = rows.reduce((s, r) => s + r.actual_stock, 0)
-  const totTotalDelivered = rows.reduce((s, r) => s + totalDelivered(r), 0)
-  const totActualPlusSold = rows.reduce((s, r) => s + r.actual_stock + r.sold_qty, 0)
-  const totalMismatch = rows.length > 0 && totActualPlusSold !== totTotalDelivered
+  const totExpected = rows.reduce((s, r) => s + expectedStock(r), 0)
+  const totalMismatch = rows.length > 0 && totActual !== totExpected
 
   return (
     <div className="max-w-5xl mx-auto p-4">
@@ -231,7 +225,6 @@ export default function Home() {
           <thead className="bg-gray-50 dark:bg-gray-700">
             <tr>
               <th className="text-left px-4 py-3 text-gray-700 dark:text-gray-300 font-semibold">商品名</th>
-              <th className="text-center px-3 py-3 text-gray-700 dark:text-gray-300 font-semibold">前月繰越数</th>
               <th className="text-center px-3 py-3 text-gray-700 dark:text-gray-300 font-semibold">前日在庫</th>
               <th className="text-center px-3 py-3 text-gray-700 dark:text-gray-300 font-semibold">納品数</th>
               <th className="text-center px-3 py-3 text-gray-700 dark:text-gray-300 font-semibold">販売数</th>
@@ -241,16 +234,12 @@ export default function Home() {
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
             {rows.map((r) => {
-              const tot = totalDelivered(r)
-              const actual = r.actual_stock + r.sold_qty
-              const mismatch = actual !== tot
-              const diff = actual - tot
+              const exp = expectedStock(r)
+              const mismatch = r.actual_stock !== exp
+              const diff = r.actual_stock - exp
               return (
                 <tr key={r.product_id} className="bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750">
                   <td className="px-4 py-2 text-gray-800 dark:text-gray-100 font-medium">{r.name}</td>
-                  <td className="px-3 py-2 text-center">
-                    <NumInput value={r.prev_month_carry} onChange={(v) => updateRow(r.product_id, 'prev_month_carry', v)} />
-                  </td>
                   <td className="px-3 py-2 text-center">
                     <NumInput value={r.prev_stock} onChange={(v) => updateRow(r.product_id, 'prev_stock', v)} />
                   </td>
@@ -285,7 +274,6 @@ export default function Home() {
             <tfoot className="bg-gray-50 dark:bg-gray-700">
               <tr>
                 <td className="px-4 py-3 font-bold text-gray-800 dark:text-gray-100">合計</td>
-                <td className="px-3 py-3 text-center font-bold text-gray-700 dark:text-gray-200">{totPrevMonthCarry}</td>
                 <td className="px-3 py-3 text-center font-bold text-gray-700 dark:text-gray-200">{totPrev}</td>
                 <td className="px-3 py-3 text-center font-bold text-gray-700 dark:text-gray-200">{totDelivery}</td>
                 <td className="px-3 py-3 text-center font-bold text-gray-700 dark:text-gray-200">{totSold}</td>
@@ -293,7 +281,7 @@ export default function Home() {
                   {totActual}
                 </td>
                 <td className={`px-3 py-3 text-center font-bold ${totalMismatch ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
-                  {totalMismatch ? `${totActualPlusSold - totTotalDelivered > 0 ? '+' : ''}${totActualPlusSold - totTotalDelivered}` : '一致'}
+                  {totalMismatch ? `${totActual - totExpected > 0 ? '+' : ''}${totActual - totExpected}` : '一致'}
                 </td>
               </tr>
             </tfoot>
