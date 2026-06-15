@@ -320,9 +320,59 @@ export default function Home() {
           setMonthlyMonth(m)
           loadMonthlySummary(y, m)
         }}
+        onImported={() => loadMonthlySummary(monthlyYear, monthlyMonth)}
       />
     </div>
   )
+}
+
+function exportCsv(year: number, month: number, checks: MonthlyCheck[], records: MonthlyRecord[], products: Product[]) {
+  const sorted = [...products].sort((a, b) => a.sort_order - b.sort_order)
+  const cols = checks.map((c) => c.check_date.slice(5).replace('-', '/'))
+
+  const header = ['商品名', '前回繰越数', ...cols, '合計納品数', '合計販売数', '在庫数']
+  const rows: string[][] = sorted.map((p) => {
+    const checkIdMap: Record<string, MonthlyRecord> = {}
+    for (const r of records) {
+      if (r.product_id === p.id) checkIdMap[r.check_id] = r
+    }
+    const prevMonthCarry = checks[0] ? (checkIdMap[checks[0].id]?.prev_month_carry ?? 0) : 0
+    const dailyCols = checks.map((c) => String(checkIdMap[c.id]?.delivery_qty ?? 0))
+    const totalDelivery = checks.reduce((s, c) => s + (checkIdMap[c.id]?.delivery_qty ?? 0), 0)
+    const totalSold = checks.reduce((s, c) => s + (checkIdMap[c.id]?.sold_qty ?? 0), 0)
+    const lastCheck = checks[checks.length - 1]
+    const stock = lastCheck ? (checkIdMap[lastCheck.id]?.actual_stock ?? 0) : 0
+    return [p.name, String(prevMonthCarry), ...dailyCols, String(totalDelivery), String(totalSold), String(stock)]
+  })
+
+  const totalRow = [
+    '合計',
+    String(records.filter((r) => checks[0] && r.check_id === checks[0].id).reduce((s, r) => s + (r.prev_month_carry ?? 0), 0)),
+    ...checks.map((c) => String(records.filter((r) => r.check_id === c.id).reduce((s, r) => s + r.delivery_qty, 0))),
+    String(records.reduce((s, r) => s + r.delivery_qty, 0)),
+    String(records.reduce((s, r) => s + r.sold_qty, 0)),
+    String((() => { const lc = checks[checks.length - 1]; return lc ? records.filter((r) => r.check_id === lc.id).reduce((s, r) => s + r.actual_stock, 0) : 0 })()),
+  ]
+
+  const cameraRow = [
+    '',
+    '',
+    ...checks.map((c) => c.camera_checked_at ? new Date(c.camera_checked_at).toLocaleString('ja-JP') : ''),
+    '', '', '',
+  ]
+
+  const csvContent = [header, ...rows, totalRow, cameraRow]
+    .map((row) => row.map((cell) => `"${cell}"`).join(','))
+    .join('\n')
+
+  const bom = '﻿'
+  const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `在庫シート_${year}年${month}月度.csv`
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 function MonthlySummary({
@@ -332,6 +382,7 @@ function MonthlySummary({
   records,
   products,
   onChangeMonth,
+  onImported,
 }: {
   year: number
   month: number
@@ -339,7 +390,10 @@ function MonthlySummary({
   records: MonthlyRecord[]
   products: Product[]
   onChangeMonth: (y: number, m: number) => void
+  onImported: () => void
 }) {
+  const [importing, setImporting] = useState(false)
+  const [importMsg, setImportMsg] = useState<string | null>(null)
   const sorted = [...products].sort((a, b) => a.sort_order - b.sort_order)
 
   function prevMonth() {
@@ -351,13 +405,47 @@ function MonthlySummary({
     else onChangeMonth(year, month + 1)
   }
 
+  async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setImporting(true)
+    setImportMsg(null)
+    const text = await file.text()
+    const res = await fetch('/api/csv-import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ year, month, csv: text }),
+    })
+    const data = await res.json()
+    setImporting(false)
+    e.target.value = ''
+    if (data.ok) {
+      setImportMsg(`インポート完了（${data.dates.length}日分）`)
+      onImported()
+    } else {
+      setImportMsg(`エラー: ${data.error}`)
+    }
+  }
+
   return (
     <div className="mt-8">
-      <div className="flex items-center gap-4 mb-3">
+      <div className="flex items-center gap-4 mb-3 flex-wrap">
         <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">月次集計</h2>
         <button onClick={prevMonth} className="px-2 py-1 rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700">◀</button>
         <span className="font-semibold text-gray-700 dark:text-gray-200">{year}年{month}月</span>
         <button onClick={nextMonth} className="px-2 py-1 rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700">▶</button>
+        <button
+          onClick={() => exportCsv(year, month, checks, records, products)}
+          disabled={checks.length === 0}
+          className="px-3 py-1 bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white text-sm font-semibold rounded-lg transition-colors"
+        >
+          CSVエクスポート
+        </button>
+        <label className={`px-3 py-1 text-sm font-semibold rounded-lg transition-colors cursor-pointer ${importing ? 'bg-gray-400 text-white' : 'bg-orange-500 hover:bg-orange-600 text-white'}`}>
+          {importing ? 'インポート中...' : 'CSVインポート'}
+          <input type="file" accept=".csv" className="hidden" onChange={handleImport} disabled={importing} />
+        </label>
+        {importMsg && <span className="text-sm text-gray-600 dark:text-gray-400">{importMsg}</span>}
       </div>
       <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
         <table className="text-xs border-collapse">
