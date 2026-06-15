@@ -98,7 +98,7 @@ export default function Home() {
         product_id: p.id,
         name: p.name,
         delivery_qty: cur?.delivery_qty ?? 0,
-        prev_stock: cur?.prev_stock ?? prev?.actual_stock ?? 0,
+        prev_stock: prev?.actual_stock ?? cur?.prev_stock ?? 0,
         prev_month_carry: cur?.prev_month_carry ?? 0,
         sold_qty: cur?.sold_qty ?? 0,
         actual_stock: cur?.actual_stock ?? 0,
