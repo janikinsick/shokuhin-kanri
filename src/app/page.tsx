@@ -57,6 +57,8 @@ export default function Home() {
   const [savedAt, setSavedAt] = useState<string | null>(null)
   const [posImporting, setPosImporting] = useState(false)
   const [posImportMsg, setPosImportMsg] = useState<string | null>(null)
+  const [deliveryMode, setDeliveryMode] = useState(false)
+  const [deliverySaving, setDeliverySaving] = useState(false)
 
   const now = new Date()
   const [monthlyYear, setMonthlyYear] = useState(now.getFullYear())
@@ -176,6 +178,39 @@ export default function Home() {
     setSavedAt(new Date().toLocaleTimeString('ja-JP'))
   }
 
+  async function saveDelivery() {
+    setDeliverySaving(true)
+    const checkRes = await fetch('/api/daily-checks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        check_date: date,
+        camera_checked_at: cameraCheckedAt ? new Date(cameraCheckedAt).toISOString() : null,
+        memo: memo || null,
+      }),
+    })
+    const savedCheck: DailyCheck = await checkRes.json()
+    await Promise.all(
+      rows.map((r) =>
+        fetch('/api/inventory', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            check_id: savedCheck.id,
+            product_id: r.product_id,
+            delivery_qty: r.delivery_qty,
+            prev_stock: r.prev_stock,
+            prev_month_carry: r.prev_month_carry,
+            sold_qty: r.sold_qty,
+            actual_stock: r.actual_stock,
+          }),
+        })
+      )
+    )
+    setDeliverySaving(false)
+    setDeliveryMode(false)
+  }
+
   const totPrev = rows.reduce((s, r) => s + r.prev_stock, 0)
   const totDelivery = rows.reduce((s, r) => s + r.delivery_qty, 0)
   const totSold = rows.reduce((s, r) => s + r.sold_qty, 0)
@@ -221,6 +256,35 @@ export default function Home() {
         </div>
       </div>
 
+      {/* 納品入力ボタン */}
+      <div className="mb-3 flex items-center gap-3">
+        {!deliveryMode ? (
+          <button
+            onClick={() => setDeliveryMode(true)}
+            disabled={rows.length === 0}
+            className="px-4 py-2 bg-orange-500 hover:bg-orange-600 disabled:opacity-40 text-white font-bold rounded-xl transition-colors"
+          >
+            納品入力
+          </button>
+        ) : (
+          <>
+            <button
+              onClick={saveDelivery}
+              disabled={deliverySaving}
+              className="px-4 py-2 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-bold rounded-xl transition-colors"
+            >
+              {deliverySaving ? '保存中...' : '納品保存'}
+            </button>
+            <button
+              onClick={() => setDeliveryMode(false)}
+              className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 font-semibold rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            >
+              キャンセル
+            </button>
+          </>
+        )}
+      </div>
+
       {/* 在庫テーブル */}
       <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
         <table className="w-full text-sm">
@@ -228,7 +292,7 @@ export default function Home() {
             <tr>
               <th className="text-left px-4 py-3 text-gray-700 dark:text-gray-300 font-semibold">商品名</th>
               <th className="text-center px-3 py-3 text-gray-700 dark:text-gray-300 font-semibold">前日在庫</th>
-              <th className="text-center px-3 py-3 text-gray-700 dark:text-gray-300 font-semibold">納品数</th>
+              {deliveryMode && <th className="text-center px-3 py-3 text-orange-600 dark:text-orange-400 font-semibold">納品数</th>}
               <th className="text-center px-3 py-3 text-gray-700 dark:text-gray-300 font-semibold">販売数</th>
               <th className="text-center px-3 py-3 text-gray-700 dark:text-gray-300 font-semibold">実在庫</th>
               <th className="text-center px-3 py-3 text-gray-700 dark:text-gray-300 font-semibold">差異</th>
@@ -245,9 +309,11 @@ export default function Home() {
                   <td className="px-3 py-2 text-center">
                     <NumInput value={r.prev_stock} onChange={(v) => updateRow(r.product_id, 'prev_stock', v)} />
                   </td>
-                  <td className="px-3 py-2 text-center">
-                    <NumInput value={r.delivery_qty} onChange={(v) => updateRow(r.product_id, 'delivery_qty', v)} />
-                  </td>
+                  {deliveryMode && (
+                    <td className="px-3 py-2 text-center">
+                      <NumInput value={r.delivery_qty} onChange={(v) => updateRow(r.product_id, 'delivery_qty', v)} highlight />
+                    </td>
+                  )}
                   <td className="px-3 py-2 text-center">
                     <NumInput value={r.sold_qty} onChange={(v) => updateRow(r.product_id, 'sold_qty', v)} />
                   </td>
@@ -277,7 +343,7 @@ export default function Home() {
               <tr>
                 <td className="px-4 py-3 font-bold text-gray-800 dark:text-gray-100">合計</td>
                 <td className="px-3 py-3 text-center font-bold text-gray-700 dark:text-gray-200">{totPrev}</td>
-                <td className="px-3 py-3 text-center font-bold text-gray-700 dark:text-gray-200">{totDelivery}</td>
+                {deliveryMode && <td className="px-3 py-3 text-center font-bold text-orange-600 dark:text-orange-400">{totDelivery}</td>}
                 <td className="px-3 py-3 text-center font-bold text-gray-700 dark:text-gray-200">{totSold}</td>
                 <td className={`px-3 py-3 text-center font-bold ${totalMismatch ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-gray-200'}`}>
                   {totActual}
@@ -591,10 +657,12 @@ function NumInput({
   value,
   onChange,
   error,
+  highlight,
 }: {
   value: number
   onChange: (v: number) => void
   error?: boolean
+  highlight?: boolean
 }) {
   return (
     <input
@@ -602,10 +670,12 @@ function NumInput({
       min={0}
       value={value}
       onChange={(e) => onChange(Number(e.target.value) || 0)}
-      className={`w-20 px-2 py-1 text-center border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+      className={`w-20 px-2 py-1 text-center border rounded-lg text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-orange-400 ${
         error
           ? 'border-red-500 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20'
-          : 'border-gray-300 dark:border-gray-600'
+          : highlight
+          ? 'border-orange-400 bg-orange-50 dark:bg-orange-900/20 focus:ring-orange-400'
+          : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700'
       }`}
     />
   )
