@@ -55,6 +55,8 @@ export default function Home() {
   const [rows, setRows] = useState<RowData[]>([])
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState<string | null>(null)
+  const [posImporting, setPosImporting] = useState(false)
+  const [posImportMsg, setPosImportMsg] = useState<string | null>(null)
 
   const now = new Date()
   const [monthlyYear, setMonthlyYear] = useState(now.getFullYear())
@@ -290,7 +292,7 @@ export default function Home() {
       </div>
 
       {/* 保存ボタン */}
-      <div className="mt-4 flex items-center gap-4">
+      <div className="mt-4 flex items-center gap-4 flex-wrap">
         <button
           onClick={save}
           disabled={saving || rows.length === 0}
@@ -301,6 +303,39 @@ export default function Home() {
         {savedAt && (
           <span className="text-green-600 dark:text-green-400 text-sm">{savedAt} に保存しました</span>
         )}
+        <label className={`px-4 py-3 text-sm font-bold rounded-xl transition-colors cursor-pointer ${posImporting ? 'bg-gray-400 text-white' : 'bg-purple-600 hover:bg-purple-700 text-white'}`}>
+          {posImporting ? 'インポート中...' : 'POS販売データ取込'}
+          <input
+            type="file"
+            accept=".csv"
+            className="hidden"
+            disabled={posImporting}
+            onChange={async (e) => {
+              const file = e.target.files?.[0]
+              if (!file) return
+              setPosImporting(true)
+              setPosImportMsg(null)
+              const text = await file.text()
+              const res = await fetch('/api/pos-import', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ csv: text }),
+              })
+              const data = await res.json()
+              e.target.value = ''
+              setPosImporting(false)
+              if (data.ok) {
+                setPosImportMsg(`取込完了（${data.dates.length}日分・${data.updatedRows}件）`)
+                const prods = await loadProducts()
+                await loadForDate(date, prods)
+                await loadMonthlySummary(monthlyYear, monthlyMonth)
+              } else {
+                setPosImportMsg(`エラー: ${data.error}`)
+              }
+            }}
+          />
+        </label>
+        {posImportMsg && <span className="text-sm text-gray-600 dark:text-gray-400">{posImportMsg}</span>}
       </div>
 
       {/* 月次集計 */}
